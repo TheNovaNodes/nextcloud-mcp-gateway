@@ -4,6 +4,7 @@ import sys
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional
 import httpx
+import uuid
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -29,6 +30,42 @@ from nextcloud_mcp_gateway.config import get_config, NextcloudConfig
 
 # Initialize FastMCP Server instance
 mcp = FastMCP("nextcloud-mcp-gateway")
+
+# Fail-Fast: Require authentication
+_config = get_config()
+if not _config.username or not _config.password:
+    print("❌ CRITICAL: Nextcloud credentials (NC_USER, NC_APP_PASSWORD) missing in Vault/Env. Aborting.", file=sys.stderr)
+    sys.exit(1)
+
+PENDING_ACTIONS: Dict[str, Dict[str, Any]] = {}
+
+def request_hitl(action_type: str, details: Dict[str, Any]) -> Dict[str, str]:
+    token = str(uuid.uuid4())
+    PENDING_ACTIONS[token] = {"type": action_type, "details": details}
+    return {
+        "status": "pending_approval", 
+        "message": f"🚨 HITL REQUIRED: Action '{action_type}' is blocked. To confirm, use 'execute_pending_action' with token.",
+        "token": token
+    }
+
+@mcp.tool()
+async def execute_pending_action(token: str) -> Dict[str, Any]:
+    """Execute a destructive action that was previously blocked by HITL."""
+    if token not in PENDING_ACTIONS:
+        return {"status": "error", "error": "Invalid, expired, or already executed HITL token."}
+        
+    action = PENDING_ACTIONS.pop(token)
+    
+    # We route the execution to the inner functions
+    if action["type"] == "delete_file":
+        return await _do_delete_file(action["details"]["path"])
+    elif action["type"] == "write_file":
+        return await _do_write_file(action["details"]["path"], action["details"]["content"])
+    elif action["type"] == "create_folder":
+        return await _do_create_folder(action["details"]["path"])
+    else:
+        return {"status": "error", "error": f"Unknown action type: {action['type']}"}
+
 
 
 def get_auth(config: NextcloudConfig) -> Optional[httpx.BasicAuth]:
@@ -92,7 +129,7 @@ async def nextcloud_health() -> Dict[str, Any]:
 
 
 @mcp.tool()
-async def list_files(path: str = "/") -> Dict[str, Any]:
+async def list_files(path: str = "/", offset: int = 0, limit: int = 50) -> Dict[str, Any]:
     """List files and folders in a Nextcloud directory via WebDAV PROPFIND."""
     config = get_config()
     clean_p = normalize_path(path)
@@ -140,10 +177,22 @@ async def list_files(path: str = "/") -> Dict[str, Any]:
                                     "last_modified": mod,
                                     "content_type": content_type
                                 })
+
                 except Exception as ex:
                     return {"status": "success", "raw_xml": resp.text[:1000], "parse_error": str(ex)}
 
-                return {"status": "success", "path": clean_p, "count": len(items), "items": items}
+                safe_limit = min(limit, 100)
+                paginated_items = items[offset:offset+safe_limit]
+                return {
+                    "status": "success", 
+                    "path": clean_p, 
+                    "total_count": len(items), 
+                    "returned_count": len(paginated_items),
+                    "offset": offset,
+                    "limit": safe_limit,
+                    "items": paginated_items
+                }
+
             elif resp.status_code == 404:
                 return {"status": "error", "error": f"Path not found: {clean_p}"}
             elif resp.status_code in [401, 403]:
@@ -179,8 +228,7 @@ async def read_file(path: str) -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
 
-@mcp.tool()
-async def write_file(path: str, content: str) -> Dict[str, Any]:
+async def _do_write_file(path: str, content: str) -> Dict[str, Any]:
     """Create or overwrite a file in Nextcloud storage via WebDAV PUT."""
     config = get_config()
     clean_p = normalize_path(path)
@@ -207,8 +255,7 @@ async def write_file(path: str, content: str) -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
 
-@mcp.tool()
-async def delete_file(path: str) -> Dict[str, Any]:
+async def _do_delete_file(path: str) -> Dict[str, Any]:
     """Delete a file or folder from Nextcloud storage via WebDAV DELETE."""
     config = get_config()
     clean_p = normalize_path(path)
@@ -227,8 +274,7 @@ async def delete_file(path: str) -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
 
-@mcp.tool()
-async def create_folder(path: str) -> Dict[str, Any]:
+async def _do_create_folder(path: str) -> Dict[str, Any]:
     """Create a new folder in Nextcloud storage via WebDAV MKCOL."""
     config = get_config()
     clean_p = normalize_path(path)
@@ -273,6 +319,22 @@ async def get_user_info() -> Dict[str, Any]:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
+
+
+@mcp.tool()
+async def write_file(path: str, content: str) -> Dict[str, Any]:
+    """Create or overwrite a file in Nextcloud storage. (HITL protected)"""
+    return request_hitl("write_file", {"path": path, "content": content})
+
+@mcp.tool()
+async def delete_file(path: str) -> Dict[str, Any]:
+    """Delete a file or folder from Nextcloud storage. (HITL protected)"""
+    return request_hitl("delete_file", {"path": path})
+
+@mcp.tool()
+async def create_folder(path: str) -> Dict[str, Any]:
+    """Create a new folder in Nextcloud storage. (HITL protected)"""
+    return request_hitl("create_folder", {"path": path})
 
 def main() -> None:
     """Server CLI entrypoint."""
