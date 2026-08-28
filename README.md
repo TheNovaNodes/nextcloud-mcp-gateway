@@ -18,13 +18,13 @@ last_verified: 2026-08-21
 
 ## What it does / does not do
 **What it does:**  
-Exposes Nextcloud file operations (WebDAV) and user information (OCS API) to AI agents via the Model Context Protocol (MCP). It allows listing, reading, creating, and deleting files and folders, as well as checking instance health and user quotas.
+Exposes Nextcloud file operations (WebDAV) and user information (OCS API) to AI agents via the Model Context Protocol (MCP). It allows listing, reading, creating, and deleting files and folders, checking instance health and user quotas, and interacting with Nextcloud Deck (Kanban boards and cards) and Calendars (CalDAV).
 
 **What it does not do:**  
 It does not administer the Nextcloud instance (e.g., creating users, configuring plugins, changing server settings), nor does it provide a full web GUI. It handles only data-plane operations scoped to the authenticated user.
 
 ## Why an agent would use it
-An AI agent can use this gateway to interact with a user's Nextcloud storage. Agents can read documents or code stored in Nextcloud, generate reports, write logs, organize files into folders, and delete temporary resources, seamlessly integrating AI workflows with the user's personal cloud.
+An AI agent can use this gateway to interact with a user's Nextcloud storage. Agents can read documents or code stored in Nextcloud, generate reports, write logs, organize files into folders, and delete temporary resources. With Deck and Calendar integration, agents can act as personal assistants, organizing tasks and scheduling events, seamlessly integrating AI workflows with the user's personal cloud.
 
 ## Architecture and Dependencies
 - **Language:** Python 3.10+
@@ -64,12 +64,17 @@ Copy `.env.example` to `.env` and fill in credentials.
 | Tool Name | Parameters | Side Effects | Description |
 | :--- | :--- | :--- | :--- |
 | `nextcloud_health` | None | **None (Read-only)** | Checks Nextcloud instance health, version, and `status.php` availability. |
-| `list_files` | `path: str = "/"` | **None (Read-only)** | Lists files and folders in a Nextcloud directory via WebDAV `PROPFIND` (Depth: 1). |
+| `list_files` | `path: str = "/"`, `offset: int = 0`, `limit: int = 50` | **None (Read-only)** | Lists files and folders in a Nextcloud directory via WebDAV `PROPFIND` (Depth: 1). Paginated. |
 | `read_file` | `path: str` | **None (Read-only)** | Reads the textual content of a file from Nextcloud storage. |
-| `write_file` | `path: str, content: str` | **Writes Data** | Creates or overwrites a file in Nextcloud storage via WebDAV `PUT` (UTF-8). |
-| `delete_file` | `path: str` | **Deletes Data** | Deletes a file or folder from Nextcloud storage via WebDAV `DELETE`. |
-| `create_folder` | `path: str` | **Creates Data** | Creates a new folder in Nextcloud storage via WebDAV `MKCOL`. |
+| `write_file` | `path: str, content: str` | **Writes Data (HITL)** | Creates or overwrites a file in Nextcloud storage via WebDAV `PUT` (UTF-8). Requires HITL approval. |
+| `delete_file` | `path: str` | **Deletes Data (HITL)** | Deletes a file or folder from Nextcloud storage via WebDAV `DELETE`. Requires HITL approval. |
+| `create_folder` | `path: str` | **Creates Data (HITL)** | Creates a new folder in Nextcloud storage via WebDAV `MKCOL`. Requires HITL approval. |
 | `get_user_info` | None | **None (Read-only)** | Retrieves user storage quota, display name, and details via Nextcloud OCS API. |
+| `list_deck_boards` | None | **None (Read-only)** | Lists all Nextcloud Deck Kanban boards available to the user. |
+| `create_deck_card` | `board_id: int`, `stack_id: int`, `title: str`, `description: str` | **Creates Data** | Creates a new Kanban card in a Nextcloud Deck. |
+| `list_calendar_events` | `calendar_name: str = "personal"` | **None (Read-only)** | Lists events from a Nextcloud CalDAV calendar. |
+| `create_calendar_event` | `event_uid: str`, `summary: str`, `dtstart: str`, `dtend: str`, `calendar_name: str` | **Creates Data** | Creates a new event in Nextcloud CalDAV calendar using iCalendar (.ics). |
+| `execute_pending_action`| `token: str` | **Executes Data** | Approves and executes an action guarded by HITL (e.g. file deletion/creation). |
 
 ## Security Model and Trust Boundaries
 - **Authentication:** Relies on HTTP Basic Authentication using `NC_USER` and `NC_APP_PASSWORD`. It is highly recommended to use Nextcloud App Passwords rather than main account passwords.

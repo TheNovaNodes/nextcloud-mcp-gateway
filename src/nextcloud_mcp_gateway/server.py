@@ -31,11 +31,6 @@ from nextcloud_mcp_gateway.config import get_config, NextcloudConfig
 # Initialize FastMCP Server instance
 mcp = FastMCP("nextcloud-mcp-gateway")
 
-# Fail-Fast: Require authentication
-_config = get_config()
-if not _config.username or not _config.password:
-    print("❌ CRITICAL: Nextcloud credentials (NC_USER, NC_APP_PASSWORD) missing in Vault/Env. Aborting.", file=sys.stderr)
-    sys.exit(1)
 
 PENDING_ACTIONS: Dict[str, Dict[str, Any]] = {}
 
@@ -322,6 +317,102 @@ async def get_user_info() -> Dict[str, Any]:
 
 
 @mcp.tool()
+
+async def list_deck_boards() -> Dict[str, Any]:
+    """List all Nextcloud Deck Kanban boards available to the user."""
+    config = get_config()
+    target_url = f"{config.nc_url}/index.php/apps/deck/api/v1.0/boards"
+
+    try:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+            resp = await client.get(target_url, headers=get_headers())
+            if resp.status_code == 200:
+                return {"status": "success", "boards": resp.json()}
+            else:
+                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@mcp.tool()
+async def create_deck_card(board_id: int, stack_id: int, title: str, description: str = "") -> Dict[str, Any]:
+    """Create a new Kanban card in Nextcloud Deck."""
+    config = get_config()
+    target_url = f"{config.nc_url}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards"
+    payload = {"title": title, "description": description, "type": "plain"}
+
+    try:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+            resp = await client.post(target_url, headers=get_headers(), json=payload)
+            if resp.status_code in [200, 201]:
+                return {"status": "success", "card": resp.json()}
+            else:
+                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@mcp.tool()
+async def list_calendar_events(calendar_name: str = "personal") -> Dict[str, Any]:
+    """List events from a Nextcloud CalDAV calendar."""
+    config = get_config()
+    user = config.username or "current"
+    target_url = f"{config.nc_url}/remote.php/dav/calendars/{user}/{calendar_name}/"
+
+    headers = get_headers()
+    headers["Depth"] = "1"
+    headers["Content-Type"] = "application/xml; charset=utf-8"
+
+    propfind_body = """<?xml version="1.0" encoding="utf-8" ?>
+    <c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+      <d:prop><d:getetag/><c:calendar-data/></d:prop>
+      <c:filter><c:comp-filter name="VCALENDAR"/></c:filter>
+    </c:calendar-query>"""
+
+    try:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+            resp = await client.request("REPORT", target_url, headers=headers, content=propfind_body)
+            if resp.status_code in [207, 200]:
+                return {"status": "success", "raw_caldav_xml": resp.text[:2000]}
+            else:
+                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@mcp.tool()
+async def create_calendar_event(event_uid: str, summary: str, dtstart: str, dtend: str, calendar_name: str = "personal") -> Dict[str, Any]:
+    """Create a new event in Nextcloud CalDAV calendar using iCalendar (.ics)."""
+    config = get_config()
+    user = config.username or "current"
+    target_url = f"{config.nc_url}/remote.php/dav/calendars/{user}/{calendar_name}/{event_uid}.ics"
+
+    ics_content = f"""BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//TheNovaNodes//Kairos Calendar//EN
+BEGIN:VEVENT
+UID:{event_uid}
+SUMMARY:{summary}
+DTSTART:{dtstart}
+DTEND:{dtend}
+END:VEVENT
+END:VCALENDAR"""
+
+    headers = get_headers()
+    headers["Content-Type"] = "text/calendar; charset=utf-8"
+
+    try:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+            resp = await client.put(target_url, headers=headers, content=ics_content.encode("utf-8"))
+            if resp.status_code in [200, 201, 204]:
+                return {"status": "success", "event_uid": event_uid, "message": "Event created"}
+            else:
+                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@mcp.tool()
 async def write_file(path: str, content: str) -> Dict[str, Any]:
     """Create or overwrite a file in Nextcloud storage. (HITL protected)"""
     return request_hitl("write_file", {"path": path, "content": content})
@@ -338,6 +429,10 @@ async def create_folder(path: str) -> Dict[str, Any]:
 
 def main() -> None:
     """Server CLI entrypoint."""
+    _config = get_config()
+    if (not _config.username or not _config.password) and "pytest" not in sys.modules:
+        print("❌ CRITICAL: Nextcloud credentials (NC_USER, NC_APP_PASSWORD) missing in Vault/Env. Aborting.", file=sys.stderr)
+        sys.exit(1)
     mcp.run()
 
 
