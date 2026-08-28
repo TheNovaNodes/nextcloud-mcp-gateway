@@ -412,6 +412,75 @@ END:VCALENDAR"""
         return {"status": "error", "error": str(e)}
 
 
+
+@mcp.tool()
+async def list_deck_stacks(board_id: int) -> Dict[str, Any]:
+    """List all stacks (columns) in a Nextcloud Deck board."""
+    config = get_config()
+    target_url = f"{config.nc_url}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks"
+
+    try:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+            resp = await client.get(target_url, headers=get_headers())
+            if resp.status_code == 200:
+                return {"status": "success", "stacks": resp.json()}
+            else:
+                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@mcp.tool()
+async def update_deck_card(board_id: int, stack_id: int, card_id: int, title: str, description: str = "", order: int = 0) -> Dict[str, Any]:
+    """Update an existing Kanban card in Nextcloud Deck (e.g. to move it to another stack/column)."""
+    config = get_config()
+    target_url = f"{config.nc_url}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}"
+    payload = {"title": title, "description": description, "order": order, "stackId": stack_id}
+
+    try:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+            resp = await client.put(target_url, headers=get_headers(), json=payload)
+            if resp.status_code == 200:
+                return {"status": "success", "card": resp.json()}
+            else:
+                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@mcp.tool()
+async def delete_deck_card(board_id: int, stack_id: int, card_id: int) -> Dict[str, Any]:
+    """Delete a Kanban card in Nextcloud Deck."""
+    config = get_config()
+    target_url = f"{config.nc_url}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}"
+
+    try:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+            resp = await client.delete(target_url, headers=get_headers())
+            if resp.status_code == 200:
+                return {"status": "success", "message": "Card deleted"}
+            else:
+                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@mcp.tool()
+async def delete_calendar_event(event_uid: str, calendar_name: str = "personal") -> Dict[str, Any]:
+    """Delete an event from a Nextcloud CalDAV calendar."""
+    config = get_config()
+    user = config.username or "current"
+    target_url = f"{config.nc_url}/remote.php/dav/calendars/{user}/{calendar_name}/{event_uid}.ics"
+
+    try:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+            resp = await client.delete(target_url, headers=get_headers())
+            if resp.status_code in [200, 204]:
+                return {"status": "success", "message": "Event deleted"}
+            elif resp.status_code == 404:
+                return {"status": "error", "error": "Event not found"}
+            else:
+                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
 @mcp.tool()
 async def write_file(path: str, content: str) -> Dict[str, Any]:
     """Create or overwrite a file in Nextcloud storage. (HITL protected)"""
