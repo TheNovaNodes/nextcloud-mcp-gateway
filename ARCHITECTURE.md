@@ -10,8 +10,12 @@
 graph TD
     Agent[🤖 AI Agent / Model] -->|MCP Protocol| FastMCP[⚡ Nextcloud MCP Gateway]
     FastMCP -->|Async WebDAV / PROPFIND / PUT| WebDAV[📂 Nextcloud WebDAV API]
+    FastMCP -->|CalDAV / REPORT / PUT| CalDAV[📅 Nextcloud CalDAV API]
+    FastMCP -->|REST / JSON| Deck[🗃️ Nextcloud Deck API]
     FastMCP -->|REST / JSON| OCS[👥 Nextcloud OCS Cloud API]
     WebDAV -->|Port 8080 / HTTPS nc.shtab-ai.ru| Nextcloud[☁️ Nextcloud Application Server]
+    CalDAV --> Nextcloud
+    Deck --> Nextcloud
     OCS --> Nextcloud
     Nextcloud --> Storage[(Filesystem & Object Storage)]
     Nextcloud --> DB[(PostgreSQL Database)]
