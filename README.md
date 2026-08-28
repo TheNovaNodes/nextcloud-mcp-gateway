@@ -74,6 +74,10 @@ Copy `.env.example` to `.env` and fill in credentials.
 | `create_deck_card` | `board_id: int`, `stack_id: int`, `title: str`, `description: str` | **Creates Data** | Creates a new Kanban card in a Nextcloud Deck. |
 | `list_calendar_events` | `calendar_name: str = "personal"` | **None (Read-only)** | Lists events from a Nextcloud CalDAV calendar. |
 | `create_calendar_event` | `event_uid: str`, `summary: str`, `dtstart: str`, `dtend: str`, `calendar_name: str` | **Creates Data** | Creates a new event in Nextcloud CalDAV calendar using iCalendar (.ics). |
+| `list_deck_stacks` | `board_id: int` | **None (Read-only)** | Lists all stacks (columns) in a Nextcloud Deck board. |
+| `update_deck_card` | `board_id: int`, `stack_id: int`, `card_id: int`, `title: str` | **Modifies Data** | Updates or moves a Kanban card in Nextcloud Deck. |
+| `delete_deck_card` | `board_id: int`, `stack_id: int`, `card_id: int` | **Deletes Data** | Deletes a Kanban card from Nextcloud Deck. |
+| `delete_calendar_event` | `event_uid: str`, `calendar_name: str` | **Deletes Data** | Deletes an event from Nextcloud CalDAV calendar. |
 | `execute_pending_action`| `token: str` | **Executes Data** | Approves and executes an action guarded by HITL (e.g. file deletion/creation). |
 
 ## Security Model and Trust Boundaries
