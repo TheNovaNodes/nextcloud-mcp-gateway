@@ -235,6 +235,32 @@ class TestUserInfoAndCli:
         evt_res = await create_calendar_event("evt-123", "Sync Meeting", "20260828T140000Z", "20260828T150000Z", "personal")
         assert evt_res["status"] == "success"
 
+
+        respx.get("http://127.0.0.1:8080/index.php/apps/deck/api/v1.0/boards/1/stacks").mock(
+            return_value=httpx.Response(200, json=[{"id": 2, "title": "To Do"}])
+        )
+        from nextcloud_mcp_gateway.server import list_deck_stacks, update_deck_card, delete_deck_card, delete_calendar_event
+        stacks_res = await list_deck_stacks(1)
+        assert stacks_res["status"] == "success"
+
+        respx.put("http://127.0.0.1:8080/index.php/apps/deck/api/v1.0/boards/1/stacks/2/cards/10").mock(
+            return_value=httpx.Response(200, json={"id": 10, "title": "Updated"})
+        )
+        update_res = await update_deck_card(1, 2, 10, "Updated")
+        assert update_res["status"] == "success"
+
+        respx.delete("http://127.0.0.1:8080/index.php/apps/deck/api/v1.0/boards/1/stacks/2/cards/10").mock(
+            return_value=httpx.Response(200)
+        )
+        del_card_res = await delete_deck_card(1, 2, 10)
+        assert del_card_res["status"] == "success"
+
+        respx.delete("http://127.0.0.1:8080/remote.php/dav/calendars/current/personal/evt-123.ics").mock(
+            return_value=httpx.Response(204)
+        )
+        del_evt_res = await delete_calendar_event("evt-123", "personal")
+        assert del_evt_res["status"] == "success"
+
     def test_cli_main(self):
         with patch("nextcloud_mcp_gateway.server.mcp.run") as mock_run:
             with patch("os.environ.get", return_value="test"):
