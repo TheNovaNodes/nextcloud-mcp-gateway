@@ -115,7 +115,7 @@ class TestFileOperations:
         )
         res = await list_files("/Documents")
         assert res["status"] == "success"
-        assert res["count"] == 2
+        assert res["total_count"] == 2
         assert res["items"][0]["is_directory"] is True
         assert res["items"][1]["size_bytes"] == 1540
 
@@ -150,29 +150,32 @@ class TestFileOperations:
     @pytest.mark.asyncio
     @respx.mock
     async def test_write_file_success(self):
+        from nextcloud_mcp_gateway.server import _do_write_file
         respx.put("http://127.0.0.1:8080/remote.php/webdav/test.txt").mock(
             return_value=httpx.Response(201, text="Created")
         )
-        res = await write_file("/test.txt", "Hello Nextcloud from Agent!")
+        res = await _do_write_file("/test.txt", "Hello Nextcloud from Agent!")
         assert res["status"] == "success"
         assert res["bytes_written"] > 0
 
     @pytest.mark.asyncio
     @respx.mock
     async def test_delete_file_success(self):
+        from nextcloud_mcp_gateway.server import _do_delete_file
         respx.delete("http://127.0.0.1:8080/remote.php/webdav/temp.txt").mock(
             return_value=httpx.Response(204)
         )
-        res = await delete_file("/temp.txt")
+        res = await _do_delete_file("/temp.txt")
         assert res["status"] == "success"
 
     @pytest.mark.asyncio
     @respx.mock
     async def test_create_folder_success(self):
+        from nextcloud_mcp_gateway.server import _do_create_folder
         respx.request("MKCOL", "http://127.0.0.1:8080/remote.php/webdav/NewFolder").mock(
             return_value=httpx.Response(201)
         )
-        res = await create_folder("/NewFolder")
+        res = await _do_create_folder("/NewFolder")
         assert res["status"] == "success"
 
 
@@ -198,6 +201,39 @@ class TestUserInfoAndCli:
         assert res["status"] == "success"
         assert res["display_name"] == "Заведующий Лабораторией"
         assert res["email"] == "izizizwtfzalupchick@gmail.com"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_deck_and_calendar_tools(self):
+        from nextcloud_mcp_gateway.server import (
+            list_deck_boards, create_deck_card, list_calendar_events, create_calendar_event
+        )
+
+        respx.get("http://127.0.0.1:8080/index.php/apps/deck/api/v1.0/boards").mock(
+            return_value=httpx.Response(200, json=[{"id": 1, "title": "Lab Board"}])
+        )
+        boards_res = await list_deck_boards()
+        assert boards_res["status"] == "success"
+        assert len(boards_res["boards"]) == 1
+
+        respx.post("http://127.0.0.1:8080/index.php/apps/deck/api/v1.0/boards/1/stacks/2/cards").mock(
+            return_value=httpx.Response(201, json={"id": 10, "title": "Deploy MCP"})
+        )
+        card_res = await create_deck_card(1, 2, "Deploy MCP", "Details here")
+        assert card_res["status"] == "success"
+        assert card_res["card"]["title"] == "Deploy MCP"
+
+        respx.route(method="REPORT", url="http://127.0.0.1:8080/remote.php/dav/calendars/current/personal/").mock(
+            return_value=httpx.Response(207, text="<multistatus></multistatus>")
+        )
+        cal_res = await list_calendar_events("personal")
+        assert cal_res["status"] == "success"
+
+        respx.put("http://127.0.0.1:8080/remote.php/dav/calendars/current/personal/evt-123.ics").mock(
+            return_value=httpx.Response(201)
+        )
+        evt_res = await create_calendar_event("evt-123", "Sync Meeting", "20260828T140000Z", "20260828T150000Z", "personal")
+        assert evt_res["status"] == "success"
 
     def test_cli_main(self):
         with patch("nextcloud_mcp_gateway.server.mcp.run") as mock_run:
