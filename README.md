@@ -44,8 +44,8 @@ cd nextcloud-mcp-gateway
 # Install dependencies and the CLI tool
 pip install -e .
 
-# The server can be started using the CLI entry point
-nextcloud-mcp-gateway
+# The server can be started using the Python module execution:
+python -m nextcloud_mcp_gateway.server
 ```
 **Health Check:** Agents can call the `nextcloud_health` tool which checks the `/status.php` endpoint of the configured Nextcloud instance.
 
