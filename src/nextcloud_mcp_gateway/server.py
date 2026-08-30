@@ -434,7 +434,8 @@ async def update_deck_card(board_id: int, stack_id: int, card_id: int, title: st
     """Update an existing Kanban card in Nextcloud Deck (e.g. to move it to another stack/column)."""
     config = get_config()
     target_url = f"{config.nc_url}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}"
-    payload = {"title": title, "description": description, "order": order, "stackId": stack_id}
+    user = config.username or "admin"
+    payload = {"title": title, "description": description, "order": order, "stackId": stack_id, "type": "plain", "owner": user}
 
     try:
         async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
