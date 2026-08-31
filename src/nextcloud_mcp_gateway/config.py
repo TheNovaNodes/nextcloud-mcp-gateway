@@ -10,6 +10,7 @@ class NextcloudConfig:
     username: str = os.getenv("NC_USER", "")
     password: str = os.getenv("NC_APP_PASSWORD", "")
     timeout: float = float(os.getenv("NC_TIMEOUT", "30.0"))
+    verify_ssl: bool = os.getenv("NC_VERIFY_SSL", "true").lower() in ("true", "1", "yes")
 
     @property
     def webdav_url(self) -> str:
