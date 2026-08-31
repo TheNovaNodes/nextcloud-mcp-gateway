@@ -31,6 +31,22 @@ from nextcloud_mcp_gateway.config import get_config, NextcloudConfig
 # Initialize FastMCP Server instance
 mcp = FastMCP("nextcloud-mcp-gateway")
 
+_client = None
+
+def get_client() -> httpx.AsyncClient:
+    global _client
+    if _client is None:
+        config = get_config()
+        auth = get_auth(config)
+        _client = httpx.AsyncClient(
+            auth=auth,
+            timeout=config.timeout,
+            verify=False,
+            limits=httpx.Limits(max_keepalive_connections=20, max_connections=50)
+        )
+    return _client
+
+
 
 PENDING_ACTIONS: Dict[str, Dict[str, Any]] = {}
 
@@ -103,19 +119,19 @@ async def nextcloud_health() -> Dict[str, Any]:
     }
 
     try:
-        async with httpx.AsyncClient(timeout=config.timeout, verify=False) as client:
-            resp = await client.get(status_url, headers=get_headers())
-            if resp.status_code == 200:
-                try:
-                    data = resp.json()
-                    health_report["status"] = "healthy" if data.get("installed") else "maintenance"
-                    health_report["details"] = data
-                except Exception:
-                    health_report["status"] = "healthy"
-                    health_report["details"] = {"raw": resp.text[:200]}
-            else:
-                health_report["status"] = "degraded"
-                health_report["error"] = f"HTTP {resp.status_code}: {resp.text[:200]}"
+        client = get_client()
+        resp = await client.get(status_url, headers=get_headers())
+        if resp.status_code == 200:
+            try:
+                data = resp.json()
+                health_report["status"] = "healthy" if data.get("installed") else "maintenance"
+                health_report["details"] = data
+            except Exception:
+                health_report["status"] = "healthy"
+                health_report["details"] = {"raw": resp.text[:200]}
+        else:
+            health_report["status"] = "degraded"
+            health_report["error"] = f"HTTP {resp.status_code}: {resp.text[:200]}"
     except Exception as e:
         health_report["status"] = "unreachable"
         health_report["error"] = str(e)
@@ -147,53 +163,53 @@ async def list_files(path: str = "/", offset: int = 0, limit: int = 50) -> Dict[
     </d:propfind>"""
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
-            resp = await client.request("PROPFIND", target_url, headers=headers, content=propfind_body)
+        client = get_client()
+        resp = await client.request("PROPFIND", target_url, headers=headers, content=propfind_body)
             
-            if resp.status_code in [207, 200]:
-                items = []
-                try:
-                    root = ET.fromstring(resp.content)
-                    ns = {"d": "DAV:", "oc": "http://owncloud.org/ns"}
-                    for response in root.findall("d:response", ns):
-                        href = response.findtext("d:href", "", ns)
-                        propstat = response.find("d:propstat", ns)
-                        if propstat is not None:
-                            prop = propstat.find("d:prop", ns)
-                            if prop is not None:
-                                is_dir = prop.find("d:resourcetype/d:collection", ns) is not None
-                                size = prop.findtext("d:getcontentlength", "0", ns)
-                                mod = prop.findtext("d:getlastmodified", "", ns)
-                                content_type = prop.findtext("d:getcontenttype", "directory" if is_dir else "file", ns)
-                                items.append({
-                                    "href": href,
-                                    "is_directory": is_dir,
-                                    "size_bytes": int(size) if size.isdigit() else 0,
-                                    "last_modified": mod,
-                                    "content_type": content_type
-                                })
+        if resp.status_code in [207, 200]:
+            items = []
+            try:
+                root = ET.fromstring(resp.content)
+                ns = {"d": "DAV:", "oc": "http://owncloud.org/ns"}
+                for response in root.findall("d:response", ns):
+                    href = response.findtext("d:href", "", ns)
+                    propstat = response.find("d:propstat", ns)
+                    if propstat is not None:
+                        prop = propstat.find("d:prop", ns)
+                        if prop is not None:
+                            is_dir = prop.find("d:resourcetype/d:collection", ns) is not None
+                            size = prop.findtext("d:getcontentlength", "0", ns)
+                            mod = prop.findtext("d:getlastmodified", "", ns)
+                            content_type = prop.findtext("d:getcontenttype", "directory" if is_dir else "file", ns)
+                            items.append({
+                                "href": href,
+                                "is_directory": is_dir,
+                                "size_bytes": int(size) if size.isdigit() else 0,
+                                "last_modified": mod,
+                                "content_type": content_type
+                            })
 
-                except Exception as ex:
-                    return {"status": "success", "raw_xml": resp.text[:1000], "parse_error": str(ex)}
+            except Exception as ex:
+                return {"status": "success", "raw_xml": resp.text[:1000], "parse_error": str(ex)}
 
-                safe_limit = min(limit, 100)
-                paginated_items = items[offset:offset+safe_limit]
-                return {
-                    "status": "success", 
-                    "path": clean_p, 
-                    "total_count": len(items), 
-                    "returned_count": len(paginated_items),
-                    "offset": offset,
-                    "limit": safe_limit,
-                    "items": paginated_items
-                }
+            safe_limit = min(limit, 100)
+            paginated_items = items[offset:offset+safe_limit]
+            return {
+                "status": "success",
+                "path": clean_p,
+                "total_count": len(items),
+                "returned_count": len(paginated_items),
+                "offset": offset,
+                "limit": safe_limit,
+                "items": paginated_items
+            }
 
-            elif resp.status_code == 404:
-                return {"status": "error", "error": f"Path not found: {clean_p}"}
-            elif resp.status_code in [401, 403]:
-                return {"status": "error", "error": "Authentication failed. Provide valid NC_USER and NC_APP_PASSWORD."}
-            else:
-                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+        elif resp.status_code == 404:
+            return {"status": "error", "error": f"Path not found: {clean_p}"}
+        elif resp.status_code in [401, 403]:
+            return {"status": "error", "error": "Authentication failed. Provide valid NC_USER and NC_APP_PASSWORD."}
+        else:
+            return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -206,19 +222,19 @@ async def read_file(path: str) -> Dict[str, Any]:
     target_url = f"{config.webdav_url}{clean_p}"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
-            resp = await client.get(target_url, headers=get_headers())
-            if resp.status_code == 200:
-                return {
-                    "status": "success",
-                    "path": clean_p,
-                    "size_bytes": len(resp.content),
-                    "content": resp.text
-                }
-            elif resp.status_code == 404:
-                return {"status": "error", "error": f"File not found: {clean_p}"}
-            else:
-                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+        client = get_client()
+        resp = await client.get(target_url, headers=get_headers())
+        if resp.status_code == 200:
+            return {
+                "status": "success",
+                "path": clean_p,
+                "size_bytes": len(resp.content),
+                "content": resp.text
+            }
+        elif resp.status_code == 404:
+            return {"status": "error", "error": f"File not found: {clean_p}"}
+        else:
+            return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -233,19 +249,19 @@ async def _do_write_file(path: str, content: str) -> Dict[str, Any]:
     headers["Content-Type"] = "text/plain; charset=utf-8"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
-            resp = await client.put(target_url, headers=headers, content=content.encode("utf-8"))
-            if resp.status_code in [200, 201, 204]:
-                return {
-                    "status": "success",
-                    "path": clean_p,
-                    "bytes_written": len(content.encode("utf-8")),
-                    "message": "File written successfully"
-                }
-            elif resp.status_code in [401, 403]:
-                return {"status": "error", "error": "Unauthorized to write file in Nextcloud."}
-            else:
-                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+        client = get_client()
+        resp = await client.put(target_url, headers=headers, content=content.encode("utf-8"))
+        if resp.status_code in [200, 201, 204]:
+            return {
+                "status": "success",
+                "path": clean_p,
+                "bytes_written": len(content.encode("utf-8")),
+                "message": "File written successfully"
+            }
+        elif resp.status_code in [401, 403]:
+            return {"status": "error", "error": "Unauthorized to write file in Nextcloud."}
+        else:
+            return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -257,14 +273,14 @@ async def _do_delete_file(path: str) -> Dict[str, Any]:
     target_url = f"{config.webdav_url}{clean_p}"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
-            resp = await client.delete(target_url, headers=get_headers())
-            if resp.status_code in [200, 204]:
-                return {"status": "success", "path": clean_p, "message": "Resource deleted"}
-            elif resp.status_code == 404:
-                return {"status": "error", "error": f"Resource not found: {clean_p}"}
-            else:
-                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+        client = get_client()
+        resp = await client.delete(target_url, headers=get_headers())
+        if resp.status_code in [200, 204]:
+            return {"status": "success", "path": clean_p, "message": "Resource deleted"}
+        elif resp.status_code == 404:
+            return {"status": "error", "error": f"Resource not found: {clean_p}"}
+        else:
+            return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -276,14 +292,14 @@ async def _do_create_folder(path: str) -> Dict[str, Any]:
     target_url = f"{config.webdav_url}{clean_p}"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
-            resp = await client.request("MKCOL", target_url, headers=get_headers())
-            if resp.status_code in [201, 200]:
-                return {"status": "success", "path": clean_p, "message": "Folder created successfully"}
-            elif resp.status_code == 405:
-                return {"status": "exists", "path": clean_p, "message": "Folder already exists"}
-            else:
-                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+        client = get_client()
+        resp = await client.request("MKCOL", target_url, headers=get_headers())
+        if resp.status_code in [201, 200]:
+            return {"status": "success", "path": clean_p, "message": "Folder created successfully"}
+        elif resp.status_code == 405:
+            return {"status": "exists", "path": clean_p, "message": "Folder already exists"}
+        else:
+            return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -296,21 +312,21 @@ async def get_user_info() -> Dict[str, Any]:
     target_url = f"{config.ocs_url}/users/{user}?format=json"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
-            resp = await client.get(target_url, headers=get_headers())
-            if resp.status_code == 200:
-                data = resp.json()
-                ocs_data = data.get("ocs", {}).get("data", {})
-                return {
-                    "status": "success",
-                    "user": user,
-                    "display_name": ocs_data.get("displayname"),
-                    "email": ocs_data.get("email"),
-                    "quota": ocs_data.get("quota", {}),
-                    "storage_location": ocs_data.get("storageLocation")
-                }
-            else:
-                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+        client = get_client()
+        resp = await client.get(target_url, headers=get_headers())
+        if resp.status_code == 200:
+            data = resp.json()
+            ocs_data = data.get("ocs", {}).get("data", {})
+            return {
+                "status": "success",
+                "user": user,
+                "display_name": ocs_data.get("displayname"),
+                "email": ocs_data.get("email"),
+                "quota": ocs_data.get("quota", {}),
+                "storage_location": ocs_data.get("storageLocation")
+            }
+        else:
+            return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -324,12 +340,12 @@ async def list_deck_boards() -> Dict[str, Any]:
     target_url = f"{config.nc_url}/index.php/apps/deck/api/v1.0/boards"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
-            resp = await client.get(target_url, headers=get_headers())
-            if resp.status_code == 200:
-                return {"status": "success", "boards": resp.json()}
-            else:
-                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+        client = get_client()
+        resp = await client.get(target_url, headers=get_headers())
+        if resp.status_code == 200:
+            return {"status": "success", "boards": resp.json()}
+        else:
+            return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -342,12 +358,12 @@ async def create_deck_card(board_id: int, stack_id: int, title: str, description
     payload = {"title": title, "description": description, "type": "plain"}
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
-            resp = await client.post(target_url, headers=get_headers(), json=payload)
-            if resp.status_code in [200, 201]:
-                return {"status": "success", "card": resp.json()}
-            else:
-                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+        client = get_client()
+        resp = await client.post(target_url, headers=get_headers(), json=payload)
+        if resp.status_code in [200, 201]:
+            return {"status": "success", "card": resp.json()}
+        else:
+            return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -370,12 +386,12 @@ async def list_calendar_events(calendar_name: str = "personal") -> Dict[str, Any
     </c:calendar-query>"""
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
-            resp = await client.request("REPORT", target_url, headers=headers, content=propfind_body)
-            if resp.status_code in [207, 200]:
-                return {"status": "success", "raw_caldav_xml": resp.text[:2000]}
-            else:
-                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+        client = get_client()
+        resp = await client.request("REPORT", target_url, headers=headers, content=propfind_body)
+        if resp.status_code in [207, 200]:
+            return {"status": "success", "raw_caldav_xml": resp.text[:2000]}
+        else:
+            return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -402,12 +418,12 @@ END:VCALENDAR"""
     headers["Content-Type"] = "text/calendar; charset=utf-8"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
-            resp = await client.put(target_url, headers=headers, content=ics_content.encode("utf-8"))
-            if resp.status_code in [200, 201, 204]:
-                return {"status": "success", "event_uid": event_uid, "message": "Event created"}
-            else:
-                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+        client = get_client()
+        resp = await client.put(target_url, headers=headers, content=ics_content.encode("utf-8"))
+        if resp.status_code in [200, 201, 204]:
+            return {"status": "success", "event_uid": event_uid, "message": "Event created"}
+        else:
+            return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -420,12 +436,12 @@ async def list_deck_stacks(board_id: int) -> Dict[str, Any]:
     target_url = f"{config.nc_url}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
-            resp = await client.get(target_url, headers=get_headers())
-            if resp.status_code == 200:
-                return {"status": "success", "stacks": resp.json()}
-            else:
-                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+        client = get_client()
+        resp = await client.get(target_url, headers=get_headers())
+        if resp.status_code == 200:
+            return {"status": "success", "stacks": resp.json()}
+        else:
+            return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -438,12 +454,12 @@ async def update_deck_card(board_id: int, stack_id: int, card_id: int, title: st
     payload = {"title": title, "description": description, "order": order, "stackId": stack_id, "type": "plain", "owner": user}
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
-            resp = await client.put(target_url, headers=get_headers(), json=payload)
-            if resp.status_code == 200:
-                return {"status": "success", "card": resp.json()}
-            else:
-                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+        client = get_client()
+        resp = await client.put(target_url, headers=get_headers(), json=payload)
+        if resp.status_code == 200:
+            return {"status": "success", "card": resp.json()}
+        else:
+            return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -454,12 +470,12 @@ async def delete_deck_card(board_id: int, stack_id: int, card_id: int) -> Dict[s
     target_url = f"{config.nc_url}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
-            resp = await client.delete(target_url, headers=get_headers())
-            if resp.status_code == 200:
-                return {"status": "success", "message": "Card deleted"}
-            else:
-                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+        client = get_client()
+        resp = await client.delete(target_url, headers=get_headers())
+        if resp.status_code == 200:
+            return {"status": "success", "message": "Card deleted"}
+        else:
+            return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -471,14 +487,14 @@ async def delete_calendar_event(event_uid: str, calendar_name: str = "personal")
     target_url = f"{config.nc_url}/remote.php/dav/calendars/{user}/{calendar_name}/{event_uid}.ics"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
-            resp = await client.delete(target_url, headers=get_headers())
-            if resp.status_code in [200, 204]:
-                return {"status": "success", "message": "Event deleted"}
-            elif resp.status_code == 404:
-                return {"status": "error", "error": "Event not found"}
-            else:
-                return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
+        client = get_client()
+        resp = await client.delete(target_url, headers=get_headers())
+        if resp.status_code in [200, 204]:
+            return {"status": "success", "message": "Event deleted"}
+        elif resp.status_code == 404:
+            return {"status": "error", "error": "Event not found"}
+        else:
+            return {"status": "error", "code": resp.status_code, "error": resp.text[:300]}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
