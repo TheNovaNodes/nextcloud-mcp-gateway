@@ -103,7 +103,7 @@ async def nextcloud_health() -> Dict[str, Any]:
     }
 
     try:
-        async with httpx.AsyncClient(timeout=config.timeout, verify=False) as client:
+        async with httpx.AsyncClient(timeout=config.timeout, verify=config.verify_ssl) as client:
             resp = await client.get(status_url, headers=get_headers())
             if resp.status_code == 200:
                 try:
@@ -147,7 +147,7 @@ async def list_files(path: str = "/", offset: int = 0, limit: int = 50) -> Dict[
     </d:propfind>"""
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=config.verify_ssl) as client:
             resp = await client.request("PROPFIND", target_url, headers=headers, content=propfind_body)
             
             if resp.status_code in [207, 200]:
@@ -206,7 +206,7 @@ async def read_file(path: str) -> Dict[str, Any]:
     target_url = f"{config.webdav_url}{clean_p}"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=config.verify_ssl) as client:
             resp = await client.get(target_url, headers=get_headers())
             if resp.status_code == 200:
                 return {
@@ -233,7 +233,7 @@ async def _do_write_file(path: str, content: str) -> Dict[str, Any]:
     headers["Content-Type"] = "text/plain; charset=utf-8"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=config.verify_ssl) as client:
             resp = await client.put(target_url, headers=headers, content=content.encode("utf-8"))
             if resp.status_code in [200, 201, 204]:
                 return {
@@ -257,7 +257,7 @@ async def _do_delete_file(path: str) -> Dict[str, Any]:
     target_url = f"{config.webdav_url}{clean_p}"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=config.verify_ssl) as client:
             resp = await client.delete(target_url, headers=get_headers())
             if resp.status_code in [200, 204]:
                 return {"status": "success", "path": clean_p, "message": "Resource deleted"}
@@ -276,7 +276,7 @@ async def _do_create_folder(path: str) -> Dict[str, Any]:
     target_url = f"{config.webdav_url}{clean_p}"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=config.verify_ssl) as client:
             resp = await client.request("MKCOL", target_url, headers=get_headers())
             if resp.status_code in [201, 200]:
                 return {"status": "success", "path": clean_p, "message": "Folder created successfully"}
@@ -296,7 +296,7 @@ async def get_user_info() -> Dict[str, Any]:
     target_url = f"{config.ocs_url}/users/{user}?format=json"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=config.verify_ssl) as client:
             resp = await client.get(target_url, headers=get_headers())
             if resp.status_code == 200:
                 data = resp.json()
@@ -324,7 +324,7 @@ async def list_deck_boards() -> Dict[str, Any]:
     target_url = f"{config.nc_url}/index.php/apps/deck/api/v1.0/boards"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=config.verify_ssl) as client:
             resp = await client.get(target_url, headers=get_headers())
             if resp.status_code == 200:
                 return {"status": "success", "boards": resp.json()}
@@ -342,7 +342,7 @@ async def create_deck_card(board_id: int, stack_id: int, title: str, description
     payload = {"title": title, "description": description, "type": "plain"}
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=config.verify_ssl) as client:
             resp = await client.post(target_url, headers=get_headers(), json=payload)
             if resp.status_code in [200, 201]:
                 return {"status": "success", "card": resp.json()}
@@ -370,7 +370,7 @@ async def list_calendar_events(calendar_name: str = "personal") -> Dict[str, Any
     </c:calendar-query>"""
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=config.verify_ssl) as client:
             resp = await client.request("REPORT", target_url, headers=headers, content=propfind_body)
             if resp.status_code in [207, 200]:
                 return {"status": "success", "raw_caldav_xml": resp.text[:2000]}
@@ -402,7 +402,7 @@ END:VCALENDAR"""
     headers["Content-Type"] = "text/calendar; charset=utf-8"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=config.verify_ssl) as client:
             resp = await client.put(target_url, headers=headers, content=ics_content.encode("utf-8"))
             if resp.status_code in [200, 201, 204]:
                 return {"status": "success", "event_uid": event_uid, "message": "Event created"}
@@ -420,7 +420,7 @@ async def list_deck_stacks(board_id: int) -> Dict[str, Any]:
     target_url = f"{config.nc_url}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=config.verify_ssl) as client:
             resp = await client.get(target_url, headers=get_headers())
             if resp.status_code == 200:
                 return {"status": "success", "stacks": resp.json()}
@@ -438,7 +438,7 @@ async def update_deck_card(board_id: int, stack_id: int, card_id: int, title: st
     payload = {"title": title, "description": description, "order": order, "stackId": stack_id, "type": "plain", "owner": user}
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=config.verify_ssl) as client:
             resp = await client.put(target_url, headers=get_headers(), json=payload)
             if resp.status_code == 200:
                 return {"status": "success", "card": resp.json()}
@@ -454,7 +454,7 @@ async def delete_deck_card(board_id: int, stack_id: int, card_id: int) -> Dict[s
     target_url = f"{config.nc_url}/index.php/apps/deck/api/v1.0/boards/{board_id}/stacks/{stack_id}/cards/{card_id}"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=config.verify_ssl) as client:
             resp = await client.delete(target_url, headers=get_headers())
             if resp.status_code == 200:
                 return {"status": "success", "message": "Card deleted"}
@@ -471,7 +471,7 @@ async def delete_calendar_event(event_uid: str, calendar_name: str = "personal")
     target_url = f"{config.nc_url}/remote.php/dav/calendars/{user}/{calendar_name}/{event_uid}.ics"
 
     try:
-        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=False) as client:
+        async with httpx.AsyncClient(auth=get_auth(config), timeout=config.timeout, verify=config.verify_ssl) as client:
             resp = await client.delete(target_url, headers=get_headers())
             if resp.status_code in [200, 204]:
                 return {"status": "success", "message": "Event deleted"}
