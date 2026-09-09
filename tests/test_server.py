@@ -28,6 +28,9 @@ class TestConfigAndHelpers:
         assert normalize_path("/notes/todo.txt") == "/notes/todo.txt"
         assert normalize_path("   /space.txt  ") == "/space.txt"
 
+        with pytest.raises(ValueError):
+            normalize_path("../../etc/passwd")
+
     def test_auth_and_headers(self):
         cfg_no_auth = NextcloudConfig(username="", password="")
         assert get_auth(cfg_no_auth) is None
