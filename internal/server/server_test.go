@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/TheNovaNodes/nextcloud-mcp-gateway/internal/caldav"
@@ -65,7 +67,7 @@ func setupTestServer(t *testing.T) (*Server, *httptest.Server) {
 	return srv, ts
 }
 
-func callTool(s *Server, name string, args map[string]any) (string, error) {
+func callToolExtended(s *Server, name string, args map[string]any) (string, error) {
 	req := mcp.CallToolRequest{}
 	req.Params.Name = name
 	req.Params.Arguments = args
@@ -93,12 +95,27 @@ func callTool(s *Server, name string, args map[string]any) (string, error) {
 		res, err = s.handleGetUserInfo(ctx, req)
 	case "list_deck_boards":
 		res, err = s.handleListDeckBoards(ctx, req)
+	case "list_deck_stacks":
+		res, err = s.handleListDeckStacks(ctx, req)
+	case "create_deck_card":
+		res, err = s.handleCreateDeckCard(ctx, req)
+	case "update_deck_card":
+		res, err = s.handleUpdateDeckCard(ctx, req)
+	case "delete_deck_card":
+		res, err = s.handleDeleteDeckCard(ctx, req)
 	case "list_calendar_events":
 		res, err = s.handleListCalendarEvents(ctx, req)
+	case "create_calendar_event":
+		res, err = s.handleCreateCalendarEvent(ctx, req)
+	case "delete_calendar_event":
+		res, err = s.handleDeleteCalendarEvent(ctx, req)
 	}
 
 	if err != nil {
 		return "", err
+	}
+	if res == nil {
+	    return "", fmt.Errorf("res is nil for %s", name)
 	}
 	if len(res.Content) > 0 {
 		if text, ok := res.Content[0].(mcp.TextContent); ok {
@@ -113,7 +130,7 @@ func TestServer_HealthAndRead(t *testing.T) {
 	defer ts.Close()
 
 	// 1. Health
-	healthText, err := callTool(srv, "nextcloud_health", nil)
+	healthText, err := callToolExtended(srv, "nextcloud_health", nil)
 	if err != nil {
 		t.Fatalf("health tool error: %v", err)
 	}
@@ -126,7 +143,7 @@ func TestServer_HealthAndRead(t *testing.T) {
 	}
 
 	// 2. Read File
-	readText, err := callTool(srv, "read_file", map[string]any{"path": "/test.txt"})
+	readText, err := callToolExtended(srv, "read_file", map[string]any{"path": "/test.txt"})
 	if err != nil {
 		t.Fatalf("read_file tool error: %v", err)
 	}
@@ -144,7 +161,7 @@ func TestServer_HITL_Workflow(t *testing.T) {
 	defer ts.Close()
 
 	// 1. Trigger write_file -> returns pending_approval
-	writeText, err := callTool(srv, "write_file", map[string]any{
+	writeText, err := callToolExtended(srv, "write_file", map[string]any{
 		"path":    "/test.txt",
 		"content": "new text",
 	})
@@ -163,7 +180,7 @@ func TestServer_HITL_Workflow(t *testing.T) {
 	}
 
 	// 2. Confirm via execute_pending_action
-	execText, err := callTool(srv, "execute_pending_action", map[string]any{
+	execText, err := callToolExtended(srv, "execute_pending_action", map[string]any{
 		"token": token,
 	})
 	if err != nil {
@@ -177,7 +194,7 @@ func TestServer_HITL_Workflow(t *testing.T) {
 	}
 
 	// 3. Confirming same token again must fail
-	execAgainText, _ := callTool(srv, "execute_pending_action", map[string]any{
+	execAgainText, _ := callToolExtended(srv, "execute_pending_action", map[string]any{
 		"token": token,
 	})
 	var againData map[string]any
@@ -192,7 +209,7 @@ func TestServer_Delete_And_CreateFolder_HITL(t *testing.T) {
 	defer ts.Close()
 
 	// Delete file HITL
-	delText, err := callTool(srv, "delete_file", map[string]any{"path": "/test.txt"})
+	delText, err := callToolExtended(srv, "delete_file", map[string]any{"path": "/test.txt"})
 	if err != nil {
 		t.Fatalf("delete_file error: %v", err)
 	}
@@ -200,7 +217,7 @@ func TestServer_Delete_And_CreateFolder_HITL(t *testing.T) {
 	_ = json.Unmarshal([]byte(delText), &delData)
 	delToken := delData["token"].(string)
 
-	execDel, _ := callTool(srv, "execute_pending_action", map[string]any{"token": delToken})
+	execDel, _ := callToolExtended(srv, "execute_pending_action", map[string]any{"token": delToken})
 	var delRes map[string]any
 	_ = json.Unmarshal([]byte(execDel), &delRes)
 	if delRes["status"] != "success" {
@@ -208,7 +225,7 @@ func TestServer_Delete_And_CreateFolder_HITL(t *testing.T) {
 	}
 
 	// Create folder HITL
-	mkText, err := callTool(srv, "create_folder", map[string]any{"path": "/newdir"})
+	mkText, err := callToolExtended(srv, "create_folder", map[string]any{"path": "/newdir"})
 	if err != nil {
 		t.Fatalf("create_folder error: %v", err)
 	}
@@ -216,10 +233,96 @@ func TestServer_Delete_And_CreateFolder_HITL(t *testing.T) {
 	_ = json.Unmarshal([]byte(mkText), &mkData)
 	mkToken := mkData["token"].(string)
 
-	execMk, _ := callTool(srv, "execute_pending_action", map[string]any{"token": mkToken})
+	execMk, _ := callToolExtended(srv, "execute_pending_action", map[string]any{"token": mkToken})
 	var mkRes map[string]any
 	_ = json.Unmarshal([]byte(execMk), &mkRes)
 	if mkRes["status"] != "success" {
 		t.Errorf("expected success for create_folder, got %v", mkRes)
+	}
+}
+
+func TestServer_UncoveredHandlers(t *testing.T) {
+	srv, ts := setupTestServer(t)
+	defer ts.Close()
+
+	tests := []struct {
+		toolName string
+		args     map[string]any
+		wantSub  string
+	}{
+		{"list_files", map[string]any{"path": "/", "offset": 0, "limit": 50}, `"status":"success"`},
+		{"get_user_info", nil, `"status":"success"`},
+		{"list_deck_boards", nil, `"status":"success"`},
+		{"list_deck_stacks", map[string]any{"board_id": 1}, `"status":"success"`},
+		{"create_deck_card", map[string]any{"board_id": 1, "stack_id": 1, "title": "t", "description": "d"}, `"status":"success"`}, // mock doesn't handle POST well but we just want coverage of handler
+		{"update_deck_card", map[string]any{"board_id": 1, "stack_id": 1, "card_id": 1, "title": "t", "description": "d", "order": 0}, `"status":"success"`},
+		{"delete_deck_card", map[string]any{"board_id": 1, "stack_id": 1, "card_id": 1}, `"status":"success"`},
+		{"list_calendar_events", map[string]any{"calendar_name": "personal"}, `"status":"success"`},
+		{"create_calendar_event", map[string]any{"event_uid": "uid", "summary": "sum", "dtstart": "start", "dtend": "end", "calendar_name": "personal"}, `"status":"success"`},
+		{"delete_calendar_event", map[string]any{"event_uid": "uid", "calendar_name": "personal"}, `"status":"success"`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.toolName, func(t *testing.T) {
+			resText, err := callToolExtended(srv, tt.toolName, tt.args)
+			if err != nil {
+				t.Fatalf("unexpected error for %s: %v", tt.toolName, err)
+			}
+			if !strings.Contains(resText, tt.wantSub) {
+				t.Errorf("tool %s expected response containing %q, got: %s", tt.toolName, tt.wantSub, resText)
+			}
+		})
+	}
+}
+
+// Ensure the jsonResult failure path is covered (e.g. chan is not marshallable)
+func TestServer_jsonResult_Error(t *testing.T) {
+	res, err := jsonResult(make(chan int))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.IsError != true {
+		t.Errorf("expected IsError true")
+	}
+	if text, ok := res.Content[0].(mcp.TextContent); !ok || !strings.Contains(text.Text, "JSON serialization error") {
+		t.Errorf("expected JSON serialization error content")
+	}
+}
+
+func TestServer_MCPServer_Coverage(t *testing.T) {
+	srv, ts := setupTestServer(t)
+	defer ts.Close()
+
+	if srv.MCPServer() == nil {
+		t.Errorf("expected MCPServer to be returned")
+	}
+}
+
+func TestServer_ExecutePendingAction_UnknownType(t *testing.T) {
+	srv, ts := setupTestServer(t)
+	defer ts.Close()
+	
+	// Inject a fake unknown action
+	token := srv.hitlMgr.Request("unknown_action_type", nil)["token"].(string)
+	
+	resText, err := callToolExtended(srv, "execute_pending_action", map[string]any{"token": token})
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if !strings.Contains(resText, "Unknown action type") {
+		t.Errorf("expected Unknown action type error, got %s", resText)
+	}
+}
+
+func TestServer_ExecutePendingAction_NoToken(t *testing.T) {
+	srv, ts := setupTestServer(t)
+	defer ts.Close()
+	
+	resText, err := callToolExtended(srv, "execute_pending_action", map[string]any{})
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if !strings.Contains(resText, "Token is required") {
+		t.Errorf("expected Token is required error, got %s", resText)
 	}
 }
