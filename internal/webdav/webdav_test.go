@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"strings"
 	"time"
 
 	"github.com/TheNovaNodes/nextcloud-mcp-gateway/internal/config"
@@ -172,5 +173,357 @@ func TestClient_WriteDeleteFolder(t *testing.T) {
 	mResEx, err := cli.CreateFolder(ctx, "/existing")
 	if err != nil || mResEx["status"] != "exists" {
 		t.Errorf("unexpected mkcol existing result: %v, err: %v", mResEx, err)
+	}
+}
+
+func TestClient_ListFiles_Errors(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		body       string
+		path       string
+		wantStatus string
+		wantErrSub string
+	}{
+		{"Bad Path", http.StatusOK, "", "../../etc/passwd", "error", "traversal detected"},
+		{"Unauthorized", http.StatusUnauthorized, "Auth required", "/docs", "error", "Authentication failed"},
+		{"Forbidden", http.StatusForbidden, "Forbidden", "/docs", "error", "Authentication failed"},
+		{"Not Found", http.StatusNotFound, "Not Found", "/docs", "error", "Path not found"},
+		{"Internal Server Error", http.StatusInternalServerError, "Server Error", "/docs", "error", "Server Error"},
+		{"Invalid XML", http.StatusMultiStatus, "<invalid>", "/docs", "success", ""}, // it actually returns success with raw_xml
+		{"Network Error", 0, "", "/docs", "error", "Get"}, // Request error
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var ts *httptest.Server
+			if tt.statusCode == 0 {
+				ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				}))
+				ts.Close() // Force network error
+			} else {
+				ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(tt.statusCode)
+					_, _ = w.Write([]byte(tt.body))
+				}))
+				defer ts.Close()
+			}
+
+			cfg := &config.Config{
+				NCURL:    ts.URL,
+				Timeout:  1 * time.Second,
+			}
+			cli := webdav.NewClient(cfg)
+			ctx := context.Background()
+
+			res, err := cli.ListFiles(ctx, tt.path, 0, 50)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			
+			if res["status"] != tt.wantStatus {
+				t.Errorf("expected status %v, got %v", tt.wantStatus, res["status"])
+			}
+			
+			if tt.wantErrSub != "" && res["status"] == "error" {
+				errStr, _ := res["error"].(string)
+				if !strings.Contains(errStr, tt.wantErrSub) && tt.statusCode != 0 {
+					t.Errorf("expected error containing %q, got %q", tt.wantErrSub, errStr)
+				}
+			}
+			
+			if tt.name == "Invalid XML" {
+			    if res["parse_error"] == nil {
+			        t.Errorf("expected parse_error for Invalid XML")
+			    }
+			}
+		})
+	}
+}
+
+func TestClient_ReadFile_Errors(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		body       string
+		path       string
+		wantStatus string
+		wantErrSub string
+	}{
+		{"Bad Path", http.StatusOK, "", "../../etc/passwd", "error", "traversal detected"},
+		{"Unauthorized", http.StatusUnauthorized, "Auth required", "/file.txt", "error", "Auth required"},
+		{"Not Found", http.StatusNotFound, "Not Found", "/file.txt", "error", "File not found"},
+		{"Network Error", 0, "", "/file.txt", "error", "Get"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var ts *httptest.Server
+			if tt.statusCode == 0 {
+				ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				}))
+				ts.Close()
+			} else {
+				ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(tt.statusCode)
+					_, _ = w.Write([]byte(tt.body))
+				}))
+				defer ts.Close()
+			}
+
+			cfg := &config.Config{
+				NCURL:    ts.URL,
+				Timeout:  1 * time.Second,
+			}
+			cli := webdav.NewClient(cfg)
+			ctx := context.Background()
+
+			res, err := cli.ReadFile(ctx, tt.path)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if res["status"] != tt.wantStatus {
+				t.Errorf("expected status %v, got %v", tt.wantStatus, res["status"])
+			}
+			if tt.wantErrSub != "" && res["status"] == "error" && tt.statusCode != 0 {
+				errStr, _ := res["error"].(string)
+				if !strings.Contains(errStr, tt.wantErrSub) {
+					t.Errorf("expected error containing %q, got %q", tt.wantErrSub, errStr)
+				}
+			}
+		})
+	}
+}
+
+
+func TestClient_WriteFile_Errors(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		body       string
+		path       string
+		wantStatus string
+		wantErrSub string
+	}{
+		{"Bad Path", http.StatusOK, "", "../../etc/passwd", "error", "traversal detected"},
+		{"Unauthorized", http.StatusUnauthorized, "Auth required", "/file.txt", "error", "Unauthorized to write file"},
+		{"Forbidden", http.StatusForbidden, "Forbidden", "/file.txt", "error", "Unauthorized to write file"},
+		{"Internal Server Error", http.StatusInternalServerError, "Server Error", "/file.txt", "error", "Server Error"},
+		{"Network Error", 0, "", "/file.txt", "error", "Put"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var ts *httptest.Server
+			if tt.statusCode == 0 {
+				ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				}))
+				ts.Close()
+			} else {
+				ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(tt.statusCode)
+					_, _ = w.Write([]byte(tt.body))
+				}))
+				defer ts.Close()
+			}
+
+			cfg := &config.Config{
+				NCURL:    ts.URL,
+				Timeout:  1 * time.Second,
+			}
+			cli := webdav.NewClient(cfg)
+			ctx := context.Background()
+
+			res, err := cli.WriteFile(ctx, tt.path, "data")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if res["status"] != tt.wantStatus {
+				t.Errorf("expected status %v, got %v", tt.wantStatus, res["status"])
+			}
+			if tt.wantErrSub != "" && res["status"] == "error" && tt.statusCode != 0 {
+				errStr, _ := res["error"].(string)
+				if !strings.Contains(errStr, tt.wantErrSub) {
+					t.Errorf("expected error containing %q, got %q", tt.wantErrSub, errStr)
+				}
+			}
+		})
+	}
+}
+
+
+func TestClient_DeleteResource_Errors(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		body       string
+		path       string
+		wantStatus string
+		wantErrSub string
+	}{
+		{"Bad Path", http.StatusOK, "", "../../etc/passwd", "error", "traversal detected"},
+		{"Not Found", http.StatusNotFound, "Not Found", "/file.txt", "error", "Resource not found"},
+		{"Internal Server Error", http.StatusInternalServerError, "Server Error", "/file.txt", "error", "Server Error"},
+		{"Network Error", 0, "", "/file.txt", "error", "Delete"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var ts *httptest.Server
+			if tt.statusCode == 0 {
+				ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				}))
+				ts.Close()
+			} else {
+				ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(tt.statusCode)
+					_, _ = w.Write([]byte(tt.body))
+				}))
+				defer ts.Close()
+			}
+
+			cfg := &config.Config{
+				NCURL:    ts.URL,
+				Timeout:  1 * time.Second,
+			}
+			cli := webdav.NewClient(cfg)
+			ctx := context.Background()
+
+			res, err := cli.DeleteResource(ctx, tt.path)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if res["status"] != tt.wantStatus {
+				t.Errorf("expected status %v, got %v", tt.wantStatus, res["status"])
+			}
+			if tt.wantErrSub != "" && res["status"] == "error" && tt.statusCode != 0 {
+				errStr, _ := res["error"].(string)
+				if !strings.Contains(errStr, tt.wantErrSub) {
+					t.Errorf("expected error containing %q, got %q", tt.wantErrSub, errStr)
+				}
+			}
+		})
+	}
+}
+
+
+func TestClient_CreateFolder_Errors(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		body       string
+		path       string
+		wantStatus string
+		wantErrSub string
+	}{
+		{"Bad Path", http.StatusOK, "", "../../etc/passwd", "error", "traversal detected"},
+		{"Internal Server Error", http.StatusInternalServerError, "Server Error", "/folder", "error", "Server Error"},
+		{"Network Error", 0, "", "/folder", "error", "MKCOL"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var ts *httptest.Server
+			if tt.statusCode == 0 {
+				ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				}))
+				ts.Close()
+			} else {
+				ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(tt.statusCode)
+					_, _ = w.Write([]byte(tt.body))
+				}))
+				defer ts.Close()
+			}
+
+			cfg := &config.Config{
+				NCURL:    ts.URL,
+				Timeout:  1 * time.Second,
+			}
+			cli := webdav.NewClient(cfg)
+			ctx := context.Background()
+
+			res, err := cli.CreateFolder(ctx, tt.path)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if res["status"] != tt.wantStatus {
+				t.Errorf("expected status %v, got %v", tt.wantStatus, res["status"])
+			}
+			if tt.wantErrSub != "" && res["status"] == "error" && tt.statusCode != 0 {
+				errStr, _ := res["error"].(string)
+				if !strings.Contains(errStr, tt.wantErrSub) {
+					t.Errorf("expected error containing %q, got %q", tt.wantErrSub, errStr)
+				}
+			}
+		})
+	}
+}
+
+func TestClient_newRequest_BadURL(t *testing.T) {
+	cfg := &config.Config{
+		NCURL:    "://invalid-url",
+		Timeout:  1 * time.Second,
+	}
+	cli := webdav.NewClient(cfg)
+	ctx := context.Background()
+
+	lRes, _ := cli.ListFiles(ctx, "/", 0, 50)
+	if lRes["status"] != "error" {
+		t.Errorf("expected ListFiles to fail with bad URL")
+	}
+	rRes, _ := cli.ReadFile(ctx, "/f")
+	if rRes["status"] != "error" {
+		t.Errorf("expected ReadFile to fail with bad URL")
+	}
+	wRes, _ := cli.WriteFile(ctx, "/f", "d")
+	if wRes["status"] != "error" {
+		t.Errorf("expected WriteFile to fail with bad URL")
+	}
+	dRes, _ := cli.DeleteResource(ctx, "/f")
+	if dRes["status"] != "error" {
+		t.Errorf("expected DeleteResource to fail with bad URL")
+	}
+	cRes, _ := cli.CreateFolder(ctx, "/f")
+	if cRes["status"] != "error" {
+		t.Errorf("expected CreateFolder to fail with bad URL")
+	}
+}
+
+func TestClient_ContextCancel(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{
+		NCURL:    ts.URL,
+		Timeout:  1 * time.Second,
+	}
+	cli := webdav.NewClient(cfg)
+	
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	lRes, _ := cli.ListFiles(ctx, "/", 0, 50)
+	if lRes["status"] != "error" {
+		t.Errorf("expected ListFiles to fail on context cancel")
+	}
+	rRes, _ := cli.ReadFile(ctx, "/f")
+	if rRes["status"] != "error" {
+		t.Errorf("expected ReadFile to fail on context cancel")
+	}
+	wRes, _ := cli.WriteFile(ctx, "/f", "d")
+	if wRes["status"] != "error" {
+		t.Errorf("expected WriteFile to fail on context cancel")
+	}
+	dRes, _ := cli.DeleteResource(ctx, "/f")
+	if dRes["status"] != "error" {
+		t.Errorf("expected DeleteResource to fail on context cancel")
+	}
+	cRes, _ := cli.CreateFolder(ctx, "/f")
+	if cRes["status"] != "error" {
+		t.Errorf("expected CreateFolder to fail on context cancel")
 	}
 }
