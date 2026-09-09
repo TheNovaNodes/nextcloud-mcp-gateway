@@ -1,6 +1,6 @@
 # ☁️ Architecture Documentation: Nextcloud MCP Gateway
 
-`nextcloud-mcp-gateway` provides an asynchronous Data Plane Model Context Protocol (MCP) bridge into Nextcloud, enabling AI agents to read, write, organize, and inspect user storage, Kanban tasks (Deck), and calendar events (CalDAV).
+`nextcloud-mcp-gateway` provides a high-performance Go 1.22+ Data Plane Model Context Protocol (MCP) bridge into Nextcloud, enabling AI agents to read, write, organize, and inspect user storage, Kanban tasks (Deck), and calendar events (CalDAV).
 
 ---
 
@@ -8,13 +8,13 @@
 
 ```mermaid
 graph TD
-    Agent[🤖 AI Agent / Model] -->|MCP Protocol| FastMCP[⚡ Nextcloud MCP Gateway]
-    FastMCP -->|HITL Guard / UUID Token Verification| Guard{🛡️ Destructive Action?}
-    Guard -->|No: Read-Only| API_Router[API Router]
-    Guard -->|Yes: Requires execute_pending_action| Pending[Pending Actions Store]
+    Agent[🤖 AI Agent / Model] -->|MCP Protocol / stdio| GoMCP[⚡ Nextcloud MCP Gateway Go]
+    GoMCP -->|HITL Guard / UUID Token Verification| Guard{🛡️ Destructive Action?}
+    Guard -->|No: Read-Only| API_Router[Internal API Dispatcher]
+    Guard -->|Yes: Requires execute_pending_action| Pending[In-Memory TTL Store]
     Pending -->|Token Approved| API_Router
     
-    API_Router -->|Async WebDAV / PROPFIND / PUT| WebDAV[📂 Nextcloud WebDAV API]
+    API_Router -->|WebDAV / PROPFIND / PUT| WebDAV[📂 Nextcloud WebDAV API]
     API_Router -->|CalDAV / REPORT / PUT / DELETE| CalDAV[📅 Nextcloud CalDAV API]
     API_Router -->|REST / JSON| Deck[🗃️ Nextcloud Deck API]
     API_Router -->|REST / JSON| OCS[👥 Nextcloud OCS Cloud API]
@@ -39,7 +39,7 @@ graph TD
 sequenceDiagram
     autonumber
     actor Agent as 🤖 AI Agent
-    participant MCP as ⚡ nextcloud-mcp-gateway
+    participant MCP as ⚡ nextcloud-mcp-gateway (Go)
     participant NC as ☁️ Nextcloud Instance
     participant Store as 💾 Storage Backend
 
@@ -58,7 +58,7 @@ sequenceDiagram
     autonumber
     actor Agent as 🤖 AI Agent
     actor User as 👤 ZaVLab / Operator
-    participant MCP as ⚡ nextcloud-mcp-gateway
+    participant MCP as ⚡ nextcloud-mcp-gateway (Go)
     participant NC as ☁️ Nextcloud Instance
 
     Agent->>MCP: write_file(path="/Reports/summary.md", content="...")
@@ -73,9 +73,11 @@ sequenceDiagram
 
 ---
 
-## 🔒 Security & Authentication
+## 🔒 Security & Performance Features
 
-* **WebDAV Scoping:** Requests are securely scoped to authenticated user folders (`/remote.php/dav/files/{user}/`).
-* **Basic Auth & App Passwords:** Uses generated Nextcloud App Passwords without exposing root account credentials.
-* **HITL Guarded Actions:** Destructive operations (`write_file`, `delete_file`, `create_folder`) are protected by single-use UUID validation tokens.
-* **Error Containment:** Safely catches HTTP 401/403/404, returning structured JSON error payloads to prevent agent crashes.
+- **Static Binary:** Single compiled Go binary with no runtime interpreter or dependency on system python/pip.
+- **WebDAV Scoping & Path Traversal Guard:** `internal/webdav/path.go` enforces strict path normalization and blocks relative traversal patterns (`..`).
+- **Basic Auth & App Passwords:** Uses generated Nextcloud App Passwords without exposing root account credentials.
+- **HITL Guarded Actions:** Destructive operations (`write_file`, `delete_file`, `create_folder`) are protected by single-use UUID validation tokens with a 5-minute TTL and automatic eviction.
+- **Connection Pooling & Resiliency:** HTTP transport pool with automatic keep-alives and strict context cancellation on timeouts.
+- **Error Containment:** Safely catches HTTP 401/403/404, returning structured JSON error payloads to prevent agent crashes.
