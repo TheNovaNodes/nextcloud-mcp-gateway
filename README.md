@@ -52,7 +52,7 @@ make test
 Copy `.env.example` to `.env` and fill in credentials.
 
 - `NC_URL`: Local or private Nextcloud instance endpoint (default: `http://127.0.0.1:8080`)
-- `NC_PUBLIC_URL`: Public HTTPS domain endpoint (default: `https://nc.shtab-ai.ru`)
+- `NC_PUBLIC_URL`: Public HTTPS domain endpoint (default: `https://nextcloud.example.com`)
 - `NC_USER`: Nextcloud username
 - `NC_APP_PASSWORD`: Nextcloud App Password or WebDAV token
 - `NC_TIMEOUT`: Request timeout in seconds (default: `30.0`)
@@ -91,3 +91,6 @@ Run tests with race detection and coverage:
 make test
 make coverage
 ```
+
+## License
+MIT License. See [LICENSE](LICENSE) for details.
