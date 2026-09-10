@@ -27,7 +27,7 @@ func LoadFromEnv() (*Config, error) {
 
 	publicURL := os.Getenv("NC_PUBLIC_URL")
 	if publicURL == "" {
-		publicURL = "https://nc.shtab-ai.ru"
+		publicURL = "https://nextcloud.example.com"
 	}
 	publicURL = strings.TrimRight(publicURL, "/")
 
