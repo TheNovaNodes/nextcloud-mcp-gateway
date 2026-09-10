@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"testing"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/TheNovaNodes/nextcloud-mcp-gateway/internal/config"
@@ -123,6 +123,44 @@ func TestClient_ReadFile(t *testing.T) {
 	}
 }
 
+func TestClient_ReadFile_LargePayload(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		// Write 10MB + 10 bytes to trigger the limit
+		const size = (10 << 20) + 10
+		// Use a large chunk to avoid loop overhead
+		chunk := make([]byte, 1<<20)
+		for i := range chunk {
+			chunk[i] = 'a'
+		}
+		for i := 0; i < size/(1<<20); i++ {
+			_, _ = w.Write(chunk)
+		}
+		_, _ = w.Write(chunk[:size%(1<<20)])
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{
+		NCURL:   ts.URL,
+		Timeout: 10 * time.Second,
+	}
+	cli := webdav.NewClient(cfg)
+
+	res, err := cli.ReadFile(context.Background(), "/large.txt")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if res["status"] != "error" {
+		t.Fatalf("expected error status for large payload, got %v", res)
+	}
+
+	errText, ok := res["error"].(string)
+	if !ok || !strings.Contains(errText, "file exceeds 10MB limit") {
+		t.Errorf("expected error containing 'file exceeds 10MB limit', got %v", res["error"])
+	}
+}
+
 func TestClient_WriteDeleteFolder(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -191,7 +229,7 @@ func TestClient_ListFiles_Errors(t *testing.T) {
 		{"Not Found", http.StatusNotFound, "Not Found", "/docs", "error", "Path not found"},
 		{"Internal Server Error", http.StatusInternalServerError, "Server Error", "/docs", "error", "Server Error"},
 		{"Invalid XML", http.StatusMultiStatus, "<invalid>", "/docs", "success", ""}, // it actually returns success with raw_xml
-		{"Network Error", 0, "", "/docs", "error", "Get"}, // Request error
+		{"Network Error", 0, "", "/docs", "error", "Get"},                            // Request error
 	}
 
 	for _, tt := range tests {
@@ -210,8 +248,8 @@ func TestClient_ListFiles_Errors(t *testing.T) {
 			}
 
 			cfg := &config.Config{
-				NCURL:    ts.URL,
-				Timeout:  1 * time.Second,
+				NCURL:   ts.URL,
+				Timeout: 1 * time.Second,
 			}
 			cli := webdav.NewClient(cfg)
 			ctx := context.Background()
@@ -220,22 +258,22 @@ func TestClient_ListFiles_Errors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			
+
 			if res["status"] != tt.wantStatus {
 				t.Errorf("expected status %v, got %v", tt.wantStatus, res["status"])
 			}
-			
+
 			if tt.wantErrSub != "" && res["status"] == "error" {
 				errStr, _ := res["error"].(string)
 				if !strings.Contains(errStr, tt.wantErrSub) && tt.statusCode != 0 {
 					t.Errorf("expected error containing %q, got %q", tt.wantErrSub, errStr)
 				}
 			}
-			
+
 			if tt.name == "Invalid XML" {
-			    if res["parse_error"] == nil {
-			        t.Errorf("expected parse_error for Invalid XML")
-			    }
+				if res["parse_error"] == nil {
+					t.Errorf("expected parse_error for Invalid XML")
+				}
 			}
 		})
 	}
@@ -272,8 +310,8 @@ func TestClient_ReadFile_Errors(t *testing.T) {
 			}
 
 			cfg := &config.Config{
-				NCURL:    ts.URL,
-				Timeout:  1 * time.Second,
+				NCURL:   ts.URL,
+				Timeout: 1 * time.Second,
 			}
 			cli := webdav.NewClient(cfg)
 			ctx := context.Background()
@@ -294,7 +332,6 @@ func TestClient_ReadFile_Errors(t *testing.T) {
 		})
 	}
 }
-
 
 func TestClient_WriteFile_Errors(t *testing.T) {
 	tests := []struct {
@@ -328,8 +365,8 @@ func TestClient_WriteFile_Errors(t *testing.T) {
 			}
 
 			cfg := &config.Config{
-				NCURL:    ts.URL,
-				Timeout:  1 * time.Second,
+				NCURL:   ts.URL,
+				Timeout: 1 * time.Second,
 			}
 			cli := webdav.NewClient(cfg)
 			ctx := context.Background()
@@ -350,7 +387,6 @@ func TestClient_WriteFile_Errors(t *testing.T) {
 		})
 	}
 }
-
 
 func TestClient_DeleteResource_Errors(t *testing.T) {
 	tests := []struct {
@@ -383,8 +419,8 @@ func TestClient_DeleteResource_Errors(t *testing.T) {
 			}
 
 			cfg := &config.Config{
-				NCURL:    ts.URL,
-				Timeout:  1 * time.Second,
+				NCURL:   ts.URL,
+				Timeout: 1 * time.Second,
 			}
 			cli := webdav.NewClient(cfg)
 			ctx := context.Background()
@@ -405,7 +441,6 @@ func TestClient_DeleteResource_Errors(t *testing.T) {
 		})
 	}
 }
-
 
 func TestClient_CreateFolder_Errors(t *testing.T) {
 	tests := []struct {
@@ -437,8 +472,8 @@ func TestClient_CreateFolder_Errors(t *testing.T) {
 			}
 
 			cfg := &config.Config{
-				NCURL:    ts.URL,
-				Timeout:  1 * time.Second,
+				NCURL:   ts.URL,
+				Timeout: 1 * time.Second,
 			}
 			cli := webdav.NewClient(cfg)
 			ctx := context.Background()
@@ -462,8 +497,8 @@ func TestClient_CreateFolder_Errors(t *testing.T) {
 
 func TestClient_newRequest_BadURL(t *testing.T) {
 	cfg := &config.Config{
-		NCURL:    "://invalid-url",
-		Timeout:  1 * time.Second,
+		NCURL:   "://invalid-url",
+		Timeout: 1 * time.Second,
 	}
 	cli := webdav.NewClient(cfg)
 	ctx := context.Background()
@@ -498,11 +533,11 @@ func TestClient_ContextCancel(t *testing.T) {
 	defer ts.Close()
 
 	cfg := &config.Config{
-		NCURL:    ts.URL,
-		Timeout:  1 * time.Second,
+		NCURL:   ts.URL,
+		Timeout: 1 * time.Second,
 	}
 	cli := webdav.NewClient(cfg)
-	
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 

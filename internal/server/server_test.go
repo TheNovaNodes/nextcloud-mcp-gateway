@@ -3,11 +3,11 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"testing"
-	"fmt"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/TheNovaNodes/nextcloud-mcp-gateway/internal/caldav"
@@ -115,7 +115,7 @@ func callToolExtended(s *Server, name string, args map[string]any) (string, erro
 		return "", err
 	}
 	if res == nil {
-	    return "", fmt.Errorf("res is nil for %s", name)
+		return "", fmt.Errorf("res is nil for %s", name)
 	}
 	if len(res.Content) > 0 {
 		if text, ok := res.Content[0].(mcp.TextContent); ok {
@@ -301,10 +301,10 @@ func TestServer_MCPServer_Coverage(t *testing.T) {
 func TestServer_ExecutePendingAction_UnknownType(t *testing.T) {
 	srv, ts := setupTestServer(t)
 	defer ts.Close()
-	
+
 	// Inject a fake unknown action
 	token := srv.hitlMgr.Request("unknown_action_type", nil)["token"].(string)
-	
+
 	resText, err := callToolExtended(srv, "execute_pending_action", map[string]any{"token": token})
 	if err != nil {
 		t.Fatalf("error: %v", err)
@@ -317,7 +317,7 @@ func TestServer_ExecutePendingAction_UnknownType(t *testing.T) {
 func TestServer_ExecutePendingAction_NoToken(t *testing.T) {
 	srv, ts := setupTestServer(t)
 	defer ts.Close()
-	
+
 	resText, err := callToolExtended(srv, "execute_pending_action", map[string]any{})
 	if err != nil {
 		t.Fatalf("error: %v", err)
