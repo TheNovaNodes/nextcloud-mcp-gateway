@@ -5,7 +5,7 @@ protocol: mcp
 primary_capability: nextcloud_webdav_caldav_deck
 requires: nextcloud
 works_with: claude_desktop, ai_agents, mcp_router
-last_verified: 2026-09-09
+last_verified: 2026-09-10
 ```
 
 # nextcloud-mcp-gateway
@@ -14,7 +14,7 @@ last_verified: 2026-09-09
 
 ## Status and Last Verified Date
 - **Status:** Active (v2.0.0 Go rewrite)
-- **Last Verified Date:** 2026-09-09
+- **Last Verified Date:** 2026-09-10
 
 ## What it does / does not do
 - **What it does:**  
@@ -61,7 +61,7 @@ Copy `.env.example` to `.env` and fill in credentials.
 
 ### Files & Storage (WebDAV)
 - `list_files(path, offset, limit)`: Lists files and folders in a Nextcloud directory via WebDAV `PROPFIND` (Depth: 1) with pagination.
-- `read_file(path)`: Reads textual content of a file from Nextcloud storage.
+- `read_file(path)`: Reads textual content of a file from Nextcloud storage (enforces 10MB limit to prevent OOM).
 - `write_file(path, content)`: **[HITL protected]** Stages file creation or overwrite. Requires user approval.
 - `delete_file(path)`: **[HITL protected]** Stages deletion of a file or folder. Requires user approval.
 - `create_folder(path)`: **[HITL protected]** Stages folder creation via WebDAV `MKCOL`. Requires user approval.
