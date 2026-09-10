@@ -95,17 +95,17 @@ func TestClient_GetUserInfo_Errors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			
+
 			if res["status"] != tt.wantStatus {
 				t.Errorf("expected status %v, got %v", tt.wantStatus, res["status"])
 			}
-			
+
 			if tt.wantErrSub != "" {
 				errStr, _ := res["error"].(string)
 				if errStr == "" && tt.statusCode == 0 { // special case network error where res["error"] will contain Get "url"
-                    if res["error"] == nil || len(res["error"].(string)) == 0 {
-                        t.Errorf("expected error string containing %q, got none", tt.wantErrSub)
-                    }
+					if res["error"] == nil || len(res["error"].(string)) == 0 {
+						t.Errorf("expected error string containing %q, got none", tt.wantErrSub)
+					}
 				}
 			}
 		})
@@ -120,8 +120,8 @@ func TestClient_GetUserInfo_ContextCancel(t *testing.T) {
 	defer ts.Close()
 
 	cfg := &config.Config{
-		NCURL:    ts.URL,
-		Timeout:  1 * time.Second,
+		NCURL:   ts.URL,
+		Timeout: 1 * time.Second,
 	}
 	cli := ocs.NewClient(cfg)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -135,7 +135,6 @@ func TestClient_GetUserInfo_ContextCancel(t *testing.T) {
 		t.Errorf("expected status error, got %v", res["status"])
 	}
 }
-
 
 func TestClient_HealthCheck_Errors(t *testing.T) {
 	tests := []struct {
@@ -169,8 +168,8 @@ func TestClient_HealthCheck_Errors(t *testing.T) {
 			}
 
 			cfg := &config.Config{
-				NCURL:    ts.URL,
-				Timeout:  1 * time.Second,
+				NCURL:   ts.URL,
+				Timeout: 1 * time.Second,
 			}
 			cli := ocs.NewClient(cfg)
 			ctx := context.Background()
@@ -179,7 +178,7 @@ func TestClient_HealthCheck_Errors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			
+
 			if res["status"] != tt.wantStatus {
 				t.Errorf("expected status %v, got %v", tt.wantStatus, res["status"])
 			}
@@ -195,8 +194,8 @@ func TestClient_HealthCheck_ContextCancel(t *testing.T) {
 	defer ts.Close()
 
 	cfg := &config.Config{
-		NCURL:    ts.URL,
-		Timeout:  1 * time.Second,
+		NCURL:   ts.URL,
+		Timeout: 1 * time.Second,
 	}
 	cli := ocs.NewClient(cfg)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -213,8 +212,8 @@ func TestClient_HealthCheck_ContextCancel(t *testing.T) {
 
 func TestClient_newRequest_BadURL(t *testing.T) {
 	cfg := &config.Config{
-		NCURL:    "://invalid-url",
-		Timeout:  1 * time.Second,
+		NCURL:   "://invalid-url",
+		Timeout: 1 * time.Second,
 	}
 	cli := ocs.NewClient(cfg)
 	ctx := context.Background()

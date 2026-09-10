@@ -116,7 +116,10 @@ func (c *Client) ListFiles(ctx context.Context, rawPath string, offset, limit in
 	if err != nil {
 		return map[string]any{"status": "error", "error": err.Error()}, nil
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.CopyN(io.Discard, resp.Body, 512)
+		resp.Body.Close()
+	}()
 
 	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -223,11 +226,19 @@ func (c *Client) ReadFile(ctx context.Context, rawPath string) (map[string]any, 
 	if err != nil {
 		return map[string]any{"status": "error", "error": err.Error()}, nil
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.CopyN(io.Discard, resp.Body, 512)
+		resp.Body.Close()
+	}()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	const limit = 10 << 20
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
 		return map[string]any{"status": "error", "error": err.Error()}, nil
+	}
+
+	if len(bodyBytes) > limit {
+		return map[string]any{"status": "error", "error": fmt.Sprintf("file exceeds 10MB limit: %s", cleanP)}, nil
 	}
 
 	if resp.StatusCode == http.StatusOK {
@@ -268,9 +279,12 @@ func (c *Client) WriteFile(ctx context.Context, rawPath, content string) (map[st
 	if err != nil {
 		return map[string]any{"status": "error", "error": err.Error()}, nil
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.CopyN(io.Discard, resp.Body, 512)
+		resp.Body.Close()
+	}()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 301))
 
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusNoContent {
 		return map[string]any{
@@ -308,9 +322,12 @@ func (c *Client) DeleteResource(ctx context.Context, rawPath string) (map[string
 	if err != nil {
 		return map[string]any{"status": "error", "error": err.Error()}, nil
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.CopyN(io.Discard, resp.Body, 512)
+		resp.Body.Close()
+	}()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 301))
 
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
 		return map[string]any{"status": "success", "path": cleanP, "message": "Resource deleted"}, nil
@@ -343,9 +360,12 @@ func (c *Client) CreateFolder(ctx context.Context, rawPath string) (map[string]a
 	if err != nil {
 		return map[string]any{"status": "error", "error": err.Error()}, nil
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.CopyN(io.Discard, resp.Body, 512)
+		resp.Body.Close()
+	}()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 301))
 
 	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusOK {
 		return map[string]any{"status": "success", "path": cleanP, "message": "Folder created successfully"}, nil

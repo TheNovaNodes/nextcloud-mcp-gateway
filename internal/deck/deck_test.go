@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"testing"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/TheNovaNodes/nextcloud-mcp-gateway/internal/config"
@@ -106,8 +106,8 @@ func TestClient_ListBoards_Errors(t *testing.T) {
 			}
 
 			cfg := &config.Config{
-				NCURL:    ts.URL,
-				Timeout:  1 * time.Second,
+				NCURL:   ts.URL,
+				Timeout: 1 * time.Second,
 			}
 			cli := deck.NewClient(cfg)
 			ctx := context.Background()
@@ -159,8 +159,8 @@ func TestClient_ListStacks_Errors(t *testing.T) {
 			}
 
 			cfg := &config.Config{
-				NCURL:    ts.URL,
-				Timeout:  1 * time.Second,
+				NCURL:   ts.URL,
+				Timeout: 1 * time.Second,
 			}
 			cli := deck.NewClient(cfg)
 			ctx := context.Background()
@@ -212,8 +212,8 @@ func TestClient_CreateCard_Errors(t *testing.T) {
 			}
 
 			cfg := &config.Config{
-				NCURL:    ts.URL,
-				Timeout:  1 * time.Second,
+				NCURL:   ts.URL,
+				Timeout: 1 * time.Second,
 			}
 			cli := deck.NewClient(cfg)
 			ctx := context.Background()
@@ -265,8 +265,8 @@ func TestClient_UpdateCard_Errors(t *testing.T) {
 			}
 
 			cfg := &config.Config{
-				NCURL:    ts.URL,
-				Timeout:  1 * time.Second,
+				NCURL:   ts.URL,
+				Timeout: 1 * time.Second,
 			}
 			cli := deck.NewClient(cfg)
 			ctx := context.Background()
@@ -287,7 +287,6 @@ func TestClient_UpdateCard_Errors(t *testing.T) {
 		})
 	}
 }
-
 
 func TestClient_DeleteCard_Errors(t *testing.T) {
 	tests := []struct {
@@ -318,8 +317,8 @@ func TestClient_DeleteCard_Errors(t *testing.T) {
 			}
 
 			cfg := &config.Config{
-				NCURL:    ts.URL,
-				Timeout:  1 * time.Second,
+				NCURL:   ts.URL,
+				Timeout: 1 * time.Second,
 			}
 			cli := deck.NewClient(cfg)
 			ctx := context.Background()
@@ -341,11 +340,10 @@ func TestClient_DeleteCard_Errors(t *testing.T) {
 	}
 }
 
-
 func TestClient_newRequest_BadURL(t *testing.T) {
 	cfg := &config.Config{
-		NCURL:    "://invalid-url",
-		Timeout:  1 * time.Second,
+		NCURL:   "://invalid-url",
+		Timeout: 1 * time.Second,
 	}
 	cli := deck.NewClient(cfg)
 	ctx := context.Background()
@@ -380,11 +378,11 @@ func TestClient_ContextCancel(t *testing.T) {
 	defer ts.Close()
 
 	cfg := &config.Config{
-		NCURL:    ts.URL,
-		Timeout:  1 * time.Second,
+		NCURL:   ts.URL,
+		Timeout: 1 * time.Second,
 	}
 	cli := deck.NewClient(cfg)
-	
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
