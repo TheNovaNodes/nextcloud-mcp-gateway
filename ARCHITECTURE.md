@@ -19,7 +19,7 @@ graph TD
     API_Router -->|REST / JSON| Deck[🗃️ Nextcloud Deck API]
     API_Router -->|REST / JSON| OCS[👥 Nextcloud OCS Cloud API]
     
-    WebDAV -->|Port 8080 / HTTPS nc.shtab-ai.ru| Nextcloud[☁️ Nextcloud Application Server]
+    WebDAV -->|Port 8080 / HTTPS nextcloud.example.com| Nextcloud[☁️ Nextcloud Application Server]
     CalDAV --> Nextcloud
     Deck --> Nextcloud
     OCS --> Nextcloud

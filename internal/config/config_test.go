@@ -19,8 +19,8 @@ func TestLoadFromEnv_Defaults(t *testing.T) {
 	if cfg.NCURL != "http://127.0.0.1:8080" {
 		t.Errorf("expected NCURL http://127.0.0.1:8080, got %s", cfg.NCURL)
 	}
-	if cfg.PublicURL != "https://nc.shtab-ai.ru" {
-		t.Errorf("expected PublicURL https://nc.shtab-ai.ru, got %s", cfg.PublicURL)
+	if cfg.PublicURL != "https://nextcloud.example.com" {
+		t.Errorf("expected PublicURL https://nextcloud.example.com, got %s", cfg.PublicURL)
 	}
 	if cfg.Timeout != 30*time.Second {
 		t.Errorf("expected Timeout 30s, got %v", cfg.Timeout)
