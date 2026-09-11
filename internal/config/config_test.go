@@ -16,8 +16,8 @@ func TestLoadFromEnv_Defaults(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if cfg.NCURL != "http://127.0.0.1:8080" {
-		t.Errorf("expected NCURL http://127.0.0.1:8080, got %s", cfg.NCURL)
+	if cfg.NCURL != "http://localhost:8080" {
+		t.Errorf("expected NCURL http://localhost:8080, got %s", cfg.NCURL)
 	}
 	if cfg.PublicURL != "https://nextcloud.example.com" {
 		t.Errorf("expected PublicURL https://nextcloud.example.com, got %s", cfg.PublicURL)
@@ -25,10 +25,10 @@ func TestLoadFromEnv_Defaults(t *testing.T) {
 	if cfg.Timeout != 30*time.Second {
 		t.Errorf("expected Timeout 30s, got %v", cfg.Timeout)
 	}
-	if cfg.WebDAVURL() != "http://127.0.0.1:8080/remote.php/webdav" {
+	if cfg.WebDAVURL() != "http://localhost:8080/remote.php/webdav" {
 		t.Errorf("expected default WebDAV URL, got %s", cfg.WebDAVURL())
 	}
-	if cfg.CalDAVURL("") != "http://127.0.0.1:8080/remote.php/dav/calendars/current/personal" {
+	if cfg.CalDAVURL("") != "http://localhost:8080/remote.php/dav/calendars/current/personal" {
 		t.Errorf("expected default CalDAV URL, got %s", cfg.CalDAVURL(""))
 	}
 }

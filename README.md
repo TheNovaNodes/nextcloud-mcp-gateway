@@ -10,6 +10,8 @@ last_verified: 2026-09-10
 
 # nextcloud-mcp-gateway
 
+![CI](https://github.com/TheNovaNodes/nextcloud-mcp-gateway/actions/workflows/ci.yml/badge.svg) ![Go Version](https://img.shields.io/badge/go-1.22+-blue.svg) ![Protocol](https://img.shields.io/badge/protocol-MCP-green.svg) ![License](https://img.shields.io/badge/license-MIT-green.svg)
+
 **Nextcloud Data Plane MCP Server for AI Agents to read, write, and manage files, CalDAV calendars, and Deck boards via WebDAV and OCS API (Go 1.22+).**
 
 ## Status and Last Verified Date
@@ -51,7 +53,7 @@ make test
 ## Configuration and Environment Variables
 Copy `.env.example` to `.env` and fill in credentials.
 
-- `NC_URL`: Local or private Nextcloud instance endpoint (default: `http://127.0.0.1:8080`)
+- `NC_URL`: Local or private Nextcloud instance endpoint (default: `http://localhost:8080`)
 - `NC_PUBLIC_URL`: Public HTTPS domain endpoint (default: `https://nextcloud.example.com`)
 - `NC_USER`: Nextcloud username
 - `NC_APP_PASSWORD`: Nextcloud App Password or WebDAV token
