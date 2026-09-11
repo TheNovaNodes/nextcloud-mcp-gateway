@@ -34,3 +34,13 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Additional rules
+*.prof
+coverage.out
+.env.*
+!.env.example
+
+# Ensure basics are here
+bin/
+.env

@@ -21,7 +21,7 @@ type Config struct {
 func LoadFromEnv() (*Config, error) {
 	ncURL := os.Getenv("NC_URL")
 	if ncURL == "" {
-		ncURL = "http://127.0.0.1:8080"
+		ncURL = "http://localhost:8080"
 	}
 	ncURL = strings.TrimRight(ncURL, "/")
 
