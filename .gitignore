@@ -1,5 +1,6 @@
 # Binaries
 bin/
+.deploy_rollback_capsule/
 /nextcloud-mcp-gateway
 
 # Go test / coverage artifacts
@@ -43,4 +44,5 @@ coverage.out
 
 # Ensure basics are here
 bin/
+.deploy_rollback_capsule/
 .env

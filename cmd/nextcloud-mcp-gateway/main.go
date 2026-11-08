@@ -15,7 +15,17 @@ import (
 	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
+var (
+	Version   = "1.0.0"
+	CommitSHA = "dev"
+)
+
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v" || os.Args[1] == "version") {
+		fmt.Printf("nextcloud-mcp-gateway version %s (commit %s)\n", Version, CommitSHA)
+		return
+	}
+
 	cfg, err := config.LoadFromEnv()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
